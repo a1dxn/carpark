@@ -25,7 +25,7 @@ public class CarParkServer {
 		}
 
 
-		CarParkManager sharedManager = new CarParkManager(5 /* Size of Car Park */);
+		CarParkManager sharedManager = new CarParkManager(2 /* Size of Car Park */);
 
 		//Start some threads when a client tries to start a connection
 		boolean listening = true;

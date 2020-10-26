@@ -8,6 +8,7 @@ import java.net.Socket;
 
 public class CarParkThread extends Thread {
 
+	public PrintWriter out = null;
 	private Socket socket = null;
 	private CarParkManager manager = null;
 	private String state = "SETUP";
@@ -18,10 +19,15 @@ public class CarParkThread extends Thread {
 		this.manager = manager;
 	}
 
+	public PrintWriter getPrinter() {
+		if(isAlive() && out!=null) return out;
+		else throw new Error("Could not get thread's printer!");
+	}
+
 	public void run() {
 		try {
 			System.out.println("New thread "+this.getId());
-			PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+			out = new PrintWriter(socket.getOutputStream(), true);
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			String inputLine, outputLine;
 
@@ -53,8 +59,10 @@ public class CarParkThread extends Thread {
 
 				if(state=="ENTRANCE" && substate=="READY") {
 					if(inputLine.equalsIgnoreCase("#list")) substate = "LIST";
-					else { //todo
-
+					else {
+						manager.lock();
+						manager.queue(inputLine, out);
+						manager.unlock();
 					}
 				}
 
@@ -68,13 +76,13 @@ public class CarParkThread extends Thread {
 					else {
 						int space = -1;
 						try {
-							space = Integer.parseInt(inputLine)-1;
+							space = Integer.parseInt(inputLine);
 						} catch(Exception e) {
 							out.println("{!!} You didnt enter a number. Please try again.");
 							continue;
 						}
 						manager.lock();
-						String kicked = manager.kick(space);
+						String kicked = manager.kick(space-1);
 						manager.unlock();
 						if(!kicked.isEmpty()) {
 							out.println("You have kicked car "+kicked+" out of space "+space+".");
