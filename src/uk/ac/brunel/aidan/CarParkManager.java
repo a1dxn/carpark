@@ -24,7 +24,7 @@ public class CarParkManager {
 		System.out.println(me.getName()+" has locked the manager.");
 	}
 
-	public synchronized void unlock() throws InterruptedException {
+	public synchronized void unlock() {
 		this.locked = false;
 		notifyAll();
 		Thread me = Thread.currentThread(); //Ref to current thread.
@@ -48,7 +48,7 @@ public class CarParkManager {
 		int space = this.findFreeSpace();
 		if(space>=0) {
 			this.carPark[space] = carReg;
-			return space+1;
+			return space;
 		} else return -1; //AKA no spaces available!
 	}
 
@@ -74,6 +74,7 @@ public class CarParkManager {
 			if(result>=0) {
 				firstCar.getPrinter().println("{*} A space has become available for "
 						+firstCar.getCarReg()+" in space "+(result+1)+"! Now that's some nice parallel parking!");
+				this.q.remove(0);
 				this.checkQueue();
 			}
 		} else {

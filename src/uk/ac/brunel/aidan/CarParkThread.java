@@ -11,8 +11,7 @@ public class CarParkThread extends Thread {
 	public PrintWriter out = null;
 	private Socket socket = null;
 	private CarParkManager manager = null;
-	private String state = "SETUP";
-	private String substate = "READY";
+	private String state = "INITIAL", previousState = null, nextState = null, role = null;
 
 	public CarParkThread(Socket socket, CarParkManager manager) {
 		this.socket = socket;
@@ -24,77 +23,92 @@ public class CarParkThread extends Thread {
 		else throw new Error("Could not get thread's printer!");
 	}
 
+	private void setState(String newState, String nextState) {
+		this.previousState = this.state;
+		this.state = newState;
+		this.nextState = nextState;
+	}
+
 	public void run() {
 		try {
 			System.out.println("New thread "+this.getId());
 			out = new PrintWriter(socket.getOutputStream(), true);
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			String inputLine, outputLine;
+			String inputLine = null;
 
-//			Initial setup to establish what I am...
-			out.println("What gatekeeper are you?:\n1. Entrance\n2. Exit");
-			while((inputLine = in.readLine())!=null) {
+			while(this.state!="STOP") {
 
-				if(state=="SETUP") {
-					if(inputLine.equalsIgnoreCase("1")) state = "ENTRANCE";
-					else if(inputLine.equalsIgnoreCase("2")) state = "EXIT";
-					if(state!="SETUP") {
-						this.setName(state+"#"+this.getId());
+				if(this.state=="INITIAL") {
+					out.println("What gatekeeper are you?:\n1. Entrance\n2. Exit");
+					this.setState("WAITING", "SETUP");
+				}
+
+				if(this.state=="SETUP") {
+					assert inputLine!=null;
+					if(inputLine.equalsIgnoreCase("1")) this.role = "ENTRANCE";
+					else if(inputLine.equalsIgnoreCase("2")) this.role = "EXIT";
+
+					if(!this.role.isBlank()) {
+						this.setName(this.role+"#"+this.getId());
 						System.out.println(this.getName()+" has connected.");
 						out.println("You are now "+this.getName()+".");
-						substate = "INTRO";
+						this.setState("LIST", "INFO");
 					} else {
 						out.println("{!!} Response not accepted. Please try again.");
-						continue;
+						this.setState("INITIAL", null);
 					}
-					//SETUP end
 				}
 
-				if(state=="ENTRANCE" && substate=="INTRO") {
+				if(this.role=="ENTRANCE" && this.state=="INFO") {
 					out.println("{?} You can get an updated list of spaces by entering '#list'");
 					out.println("{?} Enter the car registration trying to park:");
-					substate = "READY";
-					continue;
+					this.setState("WAITING", "ARRIVE");
 				}
 
-				if(state=="ENTRANCE" && substate=="READY") {
-					if(inputLine.equalsIgnoreCase("#list")) substate = "LIST";
-					else {
-						manager.lock();
-						manager.queue(inputLine, out);
-						manager.unlock();
-					}
-				}
-
-				if(state=="EXIT" && substate=="INTRO") {
+				if(this.role=="EXIT" && this.state=="INFO") {
 					out.println("{?} You can get an updated list of spaces by entering '#list'");
-					substate = "LIST";
+					out.println("{?} To make the car leave a parking space, enter the space index (the number in brackets):");
+					this.setState("WAITING", "DEPART");
 				}
 
-				if(state=="EXIT" && substate=="READY") {
-					if(inputLine.equalsIgnoreCase("#list")) substate = "LIST";
-					else {
-						int space = -1;
-						try {
-							space = Integer.parseInt(inputLine);
-						} catch(Exception e) {
-							out.println("{!!} You didnt enter a number. Please try again.");
-							continue;
-						}
-						manager.lock();
-						String kicked = manager.kick(space-1);
-						manager.unlock();
-						if(!kicked.isEmpty()) {
-							out.println("You have kicked car "+kicked+" out of space "+space+".");
-						} else {
-							out.println("{!} Unable to kick space "+space+". Perhaps the space is already empty?");
-							substate = "LIST";
-						}
-
+				if(this.state=="ARRIVE") {
+					assert inputLine!=null;
+					if(inputLine.equalsIgnoreCase("#list")) {
+						this.setState("LIST", "INFO");
+						continue;
 					}
+					manager.lock();
+					manager.queue(inputLine, out);
+					manager.unlock();
+					this.setState("INFO", null);
 				}
 
-				if(substate=="LIST") { //Can be accessed from any state.
+				if(this.state=="DEPART") {
+					assert inputLine!=null;
+					if(inputLine.equalsIgnoreCase("#list")) {
+						this.setState("LIST", "INFO");
+						continue;
+					}
+					int space = -1;
+					try {
+						space = Integer.parseInt(inputLine);
+					} catch(Exception e) {
+						out.println("{!!} You didnt enter a number. Please try again.");
+						this.setState("LIST", "INFO");
+						continue;
+					}
+					manager.lock();
+					String kicked = manager.kick(space-1);
+					manager.unlock();
+					if(!kicked.isEmpty()) {
+						out.println("You have kicked car "+kicked+" out of space "+space+".");
+					} else {
+						out.println("{!} Unable to kick space "+space+". Perhaps the space is already empty?");
+					}
+					this.setState("LIST", "INFO");
+				}
+
+				if(this.state=="LIST") {
 					manager.lock();
 					String[] spaces = manager.list();
 					manager.unlock();
@@ -102,10 +116,14 @@ public class CarParkThread extends Thread {
 					for(int i = 0; i<spaces.length; i++) {
 						out.println("["+(i+1)+"] "+spaces[i]);
 					}
-					if(state=="EXIT")
-						out.println("{?} To make the car leave a parking space, enter the space index (the number in brackets):");
-					substate = "READY";
-					continue;
+					this.setState(this.nextState, null);
+				}
+
+				if(state=="WAITING") {
+					inputLine = in.readLine();
+//				    Will only continue once a line is read from stream...
+					if(inputLine==null) state = "STOP";
+					else this.setState(this.nextState, null);
 				}
 
 			}
