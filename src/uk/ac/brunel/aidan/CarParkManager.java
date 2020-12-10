@@ -84,8 +84,8 @@ public class CarParkManager {
 	}
 
 	public synchronized String kick(int space) {
-		if(space<0 || space>this.carPark.length) return "";
-		if(this.carPark[space]==null) return "";
+		if(space<0 || space>this.carPark.length) return null;
+		if(this.carPark[space]==null) return null;
 		String car = this.carPark[space];
 		this.carPark[space] = null;
 

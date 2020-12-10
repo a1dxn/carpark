@@ -1,7 +1,6 @@
 package uk.ac.brunel.aidan;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
@@ -36,14 +35,14 @@ public class CarParkThread extends Thread {
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			String inputLine = null;
 
-			while(this.state!="STOP") {
+			while(!this.state.equals("STOP")) {
 
-				if(this.state=="INITIAL") {
+				if(this.state.equals("INITIAL")) {
 					out.println("What gatekeeper are you?:\n1. Entrance\n2. Exit");
 					this.setState("WAITING", "SETUP");
 				}
 
-				if(this.state=="SETUP") {
+				if(this.state.equals("SETUP")) {
 					assert inputLine!=null;
 					if(inputLine.equalsIgnoreCase("1")) this.role = "ENTRANCE";
 					else if(inputLine.equalsIgnoreCase("2")) this.role = "EXIT";
@@ -59,22 +58,27 @@ public class CarParkThread extends Thread {
 					}
 				}
 
-				if(this.role=="ENTRANCE" && this.state=="INFO") {
+				if(this.role.equals("ENTRANCE") && this.state.equals("INFO")) {
 					out.println("{?} You can get an updated list of spaces by entering '#list'");
 					out.println("{?} Enter the car registration trying to park:");
 					this.setState("WAITING", "ARRIVE");
 				}
 
-				if(this.role=="EXIT" && this.state=="INFO") {
+				if(this.role.equals("EXIT") && this.state.equals("INFO")) {
 					out.println("{?} You can get an updated list of spaces by entering '#list'");
 					out.println("{?} To make the car leave a parking space, enter the space index (the number in brackets):");
 					this.setState("WAITING", "DEPART");
 				}
 
-				if(this.state=="ARRIVE") {
+				if(this.state.equals("ARRIVE")) {
 					assert inputLine!=null;
 					if(inputLine.equalsIgnoreCase("#list")) {
 						this.setState("LIST", "INFO");
+						continue;
+					}
+					if(inputLine.isBlank()) {
+						out.println("{!!} Car reg cannot be blank. Please try again.");
+						this.setState("WAITING", "INFO");
 						continue;
 					}
 					manager.lock();
@@ -83,7 +87,7 @@ public class CarParkThread extends Thread {
 					this.setState("INFO", null);
 				}
 
-				if(this.state=="DEPART") {
+				if(this.state.equals("DEPART")) {
 					assert inputLine!=null;
 					if(inputLine.equalsIgnoreCase("#list")) {
 						this.setState("LIST", "INFO");
@@ -91,38 +95,38 @@ public class CarParkThread extends Thread {
 					}
 					int space = -1;
 					try {
-						space = Integer.parseInt(inputLine);
+						space += Integer.parseInt(inputLine);
 					} catch(Exception e) {
 						out.println("{!!} You didnt enter a number. Please try again.");
 						this.setState("LIST", "INFO");
 						continue;
 					}
 					manager.lock();
-					String kicked = manager.kick(space-1);
+					String kicked = manager.kick(space);
 					manager.unlock();
-					if(!kicked.isEmpty()) {
+					if(kicked!=null) {
 						out.println("You have kicked car "+kicked+" out of space "+space+".");
 					} else {
-						out.println("{!} Unable to kick space "+space+". Perhaps the space is already empty?");
+						out.println("{!!} Looks like space "+space+" is already empty. Perhaps another exit beat you to it!");
 					}
 					this.setState("LIST", "INFO");
 				}
 
-				if(this.state=="LIST") {
+				if(this.state.equals("LIST")) {
 					manager.lock();
 					String[] spaces = manager.list();
 					manager.unlock();
 					out.println("Here is the latest view of the car park:");
 					for(int i = 0; i<spaces.length; i++) {
-						out.println("["+(i+1)+"] "+spaces[i]);
+						out.println("["+(i+1)+"] "+(spaces[i]==null ? "<empty space>" : spaces[i]));
 					}
 					this.setState(this.nextState, null);
 				}
 
-				if(state=="WAITING") {
+				if(state.equals("WAITING")) {
 					inputLine = in.readLine();
 //				    Will only continue once a line is read from stream...
-					if(inputLine==null) state = "STOP";
+					if(inputLine==null) this.state = "STOP";
 					else this.setState(this.nextState, null);
 				}
 
@@ -133,8 +137,9 @@ public class CarParkThread extends Thread {
 
 			System.out.println(this.getName()+" has disconnected.");
 
-		} catch(IOException|InterruptedException e) {
-//			e.printStackTrace();
+		} catch(Exception e) {
+			System.err.println("Hm something bad has happened...");
+			e.printStackTrace();
 		}
 	}
 
